@@ -10,11 +10,12 @@ import {
   useSensor,
   useSensors,
   DragOverlay,
+  useDroppable,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Task, Status, Priority } from "@/lib/types";
 import TaskCard from "./TaskCard";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 
 interface Props {
   tasks: Task[];
@@ -26,6 +27,24 @@ const columns: { id: Status; title: string }[] = [
   { id: "inprogress", title: "Yapılıyor" },
   { id: "done", title: "Tamamlandı" },
 ];
+
+function Column({ id, title, tasks, children }: { id: Status; title: string; tasks: Task[]; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`glass rounded-2xl p-4 min-h-[400px] transition-colors ${
+        isOver ? "border-neon/60 bg-slate-800/40" : ""
+      }`}
+    >
+      <h3 className="text-lg font-semibold mb-4 flex justify-between">
+        {title}
+        <span className="text-sm text-slate-400">{tasks.length}</span>
+      </h3>
+      {children}
+    </div>
+  );
+}
 
 export default function KanbanBoard({ tasks, setTasks }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -47,13 +66,25 @@ export default function KanbanBoard({ tasks, setTasks }: Props) {
     if (!over) return;
 
     const taskId = active.id as string;
-    const newStatus = over.id as Status;
+    let newStatus: Status | null = null;
 
-    if (columns.some((c) => c.id === newStatus)) {
+    if (columns.some((c) => c.id === over.id)) {
+      newStatus = over.id as Status;
+    } else {
+      // Dropped on a task, find its column
+      const overTask = tasks.find((t) => t.id === over.id);
+      if (overTask) newStatus = overTask.status;
+    }
+
+    if (newStatus) {
       setTasks((prev) =>
         prev.map((t) =>
           t.id === taskId
-            ? { ...t, status: newStatus, completedAt: newStatus === "done" ? Date.now() : undefined }
+            ? {
+                ...t,
+                status: newStatus!,
+                completedAt: newStatus === "done" ? Date.now() : undefined,
+              }
             : t
         )
       );
@@ -81,7 +112,6 @@ export default function KanbanBoard({ tasks, setTasks }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Add Task */}
       <div className="glass p-4 rounded-2xl flex flex-col md:flex-row gap-3 items-end">
         <input
           value={newTitle}
@@ -93,7 +123,7 @@ export default function KanbanBoard({ tasks, setTasks }: Props) {
         <select
           value={newPriority}
           onChange={(e) => setNewPriority(e.target.value as Priority)}
-          className="bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3"
+          className="bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-slate-200"
         >
           <option value="low">Düşük</option>
           <option value="medium">Orta</option>
@@ -117,19 +147,15 @@ export default function KanbanBoard({ tasks, setTasks }: Props) {
           {columns.map((col) => {
             const colTasks = tasks.filter((t) => t.status === col.id);
             return (
-              <div key={col.id} className="glass rounded-2xl p-4 min-h-[400px]">
-                <h3 className="text-lg font-semibold mb-4 flex justify-between">
-                  {col.title}
-                  <span className="text-sm text-slate-400">{colTasks.length}</span>
-                </h3>
+              <Column key={col.id} id={col.id} title={col.title} tasks={colTasks}>
                 <SortableContext items={colTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-3" id={col.id}>
+                  <div className="space-y-3 min-h-[200px]">
                     {colTasks.map((task) => (
                       <TaskCard key={task.id} task={task} onDelete={deleteTask} />
                     ))}
                   </div>
                 </SortableContext>
-              </div>
+              </Column>
             );
           })}
         </div>
